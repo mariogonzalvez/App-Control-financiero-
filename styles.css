@@ -230,7 +230,9 @@ button { font: inherit; color: inherit; border: 0; background: none; cursor: poi
 .sheet-head .x { width: 34px; height: 34px; border-radius: 50%; background: rgba(120, 160, 255, .12); display: grid; place-items: center; color: var(--muted); font-size: 18px; }
 
 .amount-input { display: flex; align-items: baseline; justify-content: center; gap: 6px; padding: 6px 0 12px; }
-.amount-input input { width: 2ch; min-width: 2ch; max-width: 80%; text-align: right; font-size: 46px; font-weight: 800; background: none; border: 0; color: var(--text); outline: none; font-family: var(--font); font-variant-numeric: tabular-nums; letter-spacing: -0.02em; }
+.amount-input { position: relative; }
+.amount-meter { position: absolute; visibility: hidden; white-space: pre; pointer-events: none; font-size: 46px; font-weight: 800; font-family: var(--font); font-variant-numeric: tabular-nums; letter-spacing: -0.02em; }
+.amount-input input { width: 60px; min-width: 40px; max-width: 80%; padding: 0; text-align: right; font-size: 46px; font-weight: 800; background: none; border: 0; color: var(--text); outline: none; font-family: var(--font); font-variant-numeric: tabular-nums; letter-spacing: -0.02em; }
 .amount-input input::placeholder { color: #2B3A60; }
 .amount-input .cur { font-size: 30px; font-weight: 800; color: var(--muted); }
 

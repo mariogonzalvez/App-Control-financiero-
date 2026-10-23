@@ -5,6 +5,7 @@
    ========================================================= */
 
 const STORAGE_KEY = 'cf-data-v1';
+const APP_VERSION = '3';
 const PALETTE = ['#3987e5', '#d95926', '#199e70', '#c98500', '#d55181', '#008300', '#9085e9', '#e66767'];
 const OTHER_COLOR = '#7d8aa5';
 const FIXED_COLOR = '#5f7bb0';
@@ -845,7 +846,7 @@ function renderSettings() {
     <div class="card">
       <button class="list-row" id="s-reset" style="color:#FF8590"><span class="t">Borrar todos los datos</span>${ICON.chev}</button>
     </div>
-    <div class="small dim" style="text-align:center;margin:18px 0 6px">Control Financiero · Tus datos solo están en este iPhone</div>`;
+    <div class="small dim" style="text-align:center;margin:18px 0 6px">Control Financiero · versión ${APP_VERSION}<br>Tus datos solo están en este iPhone</div>`;
 
   const updTotal = () => {
     const t = pctTotal(draft);
@@ -975,7 +976,14 @@ function openSheet(title, body, onMount) {
   sh.scrollTop = 0;
   const amt = $('.amount-input input', sh);
   if (amt) {
-    const fit = () => { amt.style.width = Math.max(2, (amt.value || amt.placeholder).length + 0.6) + 'ch'; };
+    // Mide el texto real con la misma fuente para que el importe nunca se corte
+    const meter = document.createElement('span');
+    meter.className = 'amount-meter';
+    amt.parentNode.appendChild(meter);
+    const fit = () => {
+      meter.textContent = amt.value || amt.placeholder || '0';
+      amt.style.width = Math.ceil(meter.getBoundingClientRect().width + 14) + 'px';
+    };
     amt.addEventListener('input', fit);
     fit();
   }
@@ -1059,7 +1067,7 @@ function openMovementForm(type, m = null, preset = {}) {
     const cats = spendCats();
     if (f.categoryId && !cats.find(c => c.id === f.categoryId) && editing) cats.push({ id: f.categoryId, name: 'Otros', color: OTHER_COLOR });
     body += `<div class="field" style="margin-top:4px"><span class="field-label">Categoría</span><div class="chips" id="f-cats">
-      ${cats.map(c => { const sc = st.cats.find(x => x.id === c.id); return `<button class="chip ${c.id === f.categoryId ? 'on' : ''}" data-c="${c.id}"><span class="dot" style="background:${c.color}"></span>${esc(c.name)}${sc ? ` <span class="left num">${fmt(sc.left)}</span>` : ''}</button>`; }).join('')}
+      ${cats.map(c => { const sc = st.cats.find(x => x.id === c.id); return `<button class="chip ${c.id === f.categoryId ? 'on' : ''}" data-c="${c.id}"><span class="dot" style="background:${c.color}"></span>${esc(c.name)}${sc && sc.limit > 0 ? ` <span class="left num">${fmt(sc.left)}</span>` : ''}</button>`; }).join('')}
     </div></div>
     <div class="field"><span class="field-label">Pagado con</span>${accSeg('f-acc', f.account)}</div>`;
   }
@@ -1245,5 +1253,15 @@ setTimeout(() => {
 }, 650);
 
 if ('serviceWorker' in navigator) {
-  window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {}));
+  // Si llega una versión nueva mientras la app está abierta, se recarga sola
+  const hadController = !!navigator.serviceWorker.controller;
+  let reloaded = false;
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (hadController && !reloaded) { reloaded = true; location.reload(); }
+  });
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('sw.js').then(reg => {
+      document.addEventListener('visibilitychange', () => { if (!document.hidden) reg.update().catch(() => {}); });
+    }).catch(() => {});
+  });
 }
