@@ -213,8 +213,8 @@ button { font: inherit; color: inherit; border: 0; background: none; cursor: poi
 #sheet-backdrop { position: fixed; inset: 0; z-index: 40; background: rgba(2, 5, 14, .6); opacity: 0; visibility: hidden; transition: opacity .3s, visibility .3s; backdrop-filter: blur(2px); -webkit-backdrop-filter: blur(2px); }
 #sheet-backdrop.open { opacity: 1; visibility: visible; }
 #sheet {
-  position: fixed; left: 0; right: 0; bottom: 0; z-index: 41;
-  max-height: calc(100% - var(--safe-top) - 24px);
+  position: fixed; left: 0; right: 0; bottom: var(--kb, 0px); z-index: 41;
+  max-height: calc(var(--vvh, 100%) - var(--safe-top) - 24px);
   overflow-y: auto; -webkit-overflow-scrolling: touch; overscroll-behavior: contain;
   background: linear-gradient(180deg, #13224A, #0B1531 40%);
   border-top: 1px solid var(--line-2);
@@ -242,7 +242,8 @@ button { font: inherit; color: inherit; border: 0; background: none; cursor: poi
   font-family: var(--font); font-size: 16px; outline: none; -webkit-appearance: none; appearance: none;
 }
 .input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(46, 139, 255, .2); }
-input[type="date"].input { display: flex; align-items: center; }
+input[type="date"].input { display: block; min-width: 0; line-height: 50px; text-align: left; }
+input[type="date"].input::-webkit-date-and-time-value { text-align: left; }
 textarea.input { height: 110px; padding: 12px 14px; resize: none; font-size: 15px; }
 .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 
@@ -251,7 +252,11 @@ textarea.input { height: 110px; padding: 12px 14px; resize: none; font-size: 15p
 .chip.on { color: #fff; border-color: var(--accent); background: rgba(46, 139, 255, .22); box-shadow: 0 0 0 1px var(--accent) inset; }
 .chip .left { font-size: 12px; color: var(--dim); font-weight: 600; }
 .chip.on .left { color: #BFD8FF; }
-.sheet-actions { display: flex; gap: 10px; margin-top: 22px; }
+.sheet-actions {
+  display: flex; gap: 10px; margin: 22px -18px 0; padding: 12px 18px 4px;
+  position: sticky; bottom: calc(-1 * (var(--safe-bottom) + 18px)); z-index: 2;
+  background: linear-gradient(180deg, rgba(11, 21, 49, 0), #0B1531 30%);
+}
 .sheet-actions .btn { flex: 1; }
 
 /* ---------- Ajustes ---------- */
