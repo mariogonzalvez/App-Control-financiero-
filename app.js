@@ -5,7 +5,7 @@
    ========================================================= */
 
 const STORAGE_KEY = 'cf-data-v1';
-const APP_VERSION = '4';
+const APP_VERSION = '5';
 const PALETTE = ['#3987e5', '#d95926', '#199e70', '#c98500', '#d55181', '#008300', '#9085e9', '#e66767'];
 const OTHER_COLOR = '#7d8aa5';
 const FIXED_COLOR = '#5f7bb0';
@@ -126,7 +126,6 @@ function defaultState() {
     categories: defaultCategories(),
     investment: { value: 0, updatedAt: null },
     applied: {},
-    imported: [],
     snapshots: {},
     lastYM: null,
     pendingClose: null,
@@ -152,6 +151,8 @@ function save() {
 /* ---------- Cálculos ---------- */
 const catById = id => S.categories.find(c => c.id === id);
 const spendCats = () => S.categories.filter(c => c.kind === 'normal');
+/* Categorías elegibles al apuntar un gasto: las normales y la de inversión */
+const pickCats = () => S.categories.filter(c => c.kind === 'normal' || c.kind === 'inversion');
 const invCat = () => S.categories.find(c => c.kind === 'inversion');
 const pctTotal = cats => round2(sum(cats, c => Number(c.pct) || 0));
 const fixedTotal = () => round2(sum(S.recurring, r => r.amount));
@@ -195,9 +196,10 @@ function monthStats(ym) {
   const ms = S.movements.filter(m => ymOf(m.date) === ym);
   const income = round2(sum(ms.filter(m => m.type === 'ingreso'), m => m.amount));
   const fixedPaid = round2(sum(ms.filter(m => m.type === 'fijo'), m => m.amount));
-  const gastos = ms.filter(m => m.type === 'gasto');
+  const invIds = new Set(cfg.cats.filter(c => c.kind === 'inversion').map(c => c.id));
+  const gastos = ms.filter(m => m.type === 'gasto' && !invIds.has(m.categoryId));
   const spent = round2(sum(gastos, m => m.amount));
-  const aport = round2(sum(ms.filter(m => m.type === 'aportacion'), m => m.amount));
+  const aport = round2(sum(ms.filter(m => m.type === 'aportacion' || (m.type === 'gasto' && invIds.has(m.categoryId))), m => m.amount));
   const disponible = round2(income - cfg.fixedTotal);
   const base = Math.max(0, disponible);
   const knownIds = new Set(cfg.cats.map(c => c.id));
@@ -314,7 +316,6 @@ const ICON = {
   plus: '<svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>',
   repeat: '<svg viewBox="0 0 24 24"><path d="M17 2l4 4-4 4"/><path d="M3 11V9a3 3 0 0 1 3-3h15M7 22l-4-4 4-4"/><path d="M21 13v2a3 3 0 0 1-3 3H3"/></svg>',
   trend: '<svg viewBox="0 0 24 24"><path d="M3 17l6-6 4 4 8-8M15 7h6v6"/></svg>',
-  paste: '<svg viewBox="0 0 24 24"><rect x="8" y="2" width="8" height="4" rx="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><path d="M12 11v6M9 14l3 3 3-3"/></svg>',
 };
 
 /* ---------- Movimientos: presentación ---------- */
@@ -412,7 +413,7 @@ function render() {
   if (old) old.remove();
   view.classList.remove('has-actionbar');
   if (!S.setup) return renderWelcome();
-  ({ inicio: renderHome, mes: renderMonth, inversion: renderInvestment, graficas: renderCharts, ajustes: renderSettings }[UI.tab])();
+  ({ inicio: renderHome, mes: renderMonth, graficas: renderCharts, ajustes: renderSettings }[UI.tab])();
   animateBars(view);
 }
 
@@ -479,7 +480,6 @@ function renderHome() {
       ${accMv.length > UI.listLimit ? '<button class="btn btn-ghost btn-block btn-small" id="more" style="margin-top:10px">Ver más</button>' : ''}
     </div>
 
-    <button class="chip-import" id="imp">${ICON.paste}<span>Importar gasto desde el atajo de iPhone</span></button>
 
     <div class="card">
       <div class="card-title"><span>Este mes · te queda</span><button class="link" id="to-month">Ver reparto</button></div>
@@ -509,11 +509,8 @@ function renderHome() {
   $('#more')?.addEventListener('click', () => { UI.listLimit += 50; renderHome(); animateBars(view); });
   $('#to-month').addEventListener('click', () => { UI.viewYM = curYM(); go('mes'); });
   $$('[data-cat]', view).forEach(el => el.addEventListener('click', () => {
-    const c = catById(el.dataset.cat);
-    if (c && c.kind === 'inversion') return go('inversion');
     openMovementForm('gasto', null, { categoryId: el.dataset.cat });
   }));
-  $('#imp').addEventListener('click', importFromClipboard);
 }
 /* Botones fijos abajo. En la vista Mes, la fecha propuesta es la del mes que estás viendo. */
 function addActionBar(ym = null) {
@@ -623,56 +620,6 @@ function renderMonth() {
   $('#more')?.addEventListener('click', () => { UI.listLimit += 50; renderMonth(); animateBars(view); });
 }
 
-/* ---------- Inversión ---------- */
-function renderInvestment() {
-  const st = monthStats(curYM());
-  const ic = st.cats.find(c => c.kind === 'inversion');
-  const aports = S.movements.filter(m => m.type === 'aportacion');
-  const totalAport = round2(sum(aports, m => m.amount));
-  const upd = S.investment.updatedAt ? new Date(S.investment.updatedAt).toLocaleDateString('es-ES', { day: 'numeric', month: 'long', year: 'numeric' }) : null;
-  view.innerHTML = `
-    <section class="hero">
-      <div class="hero-label">VALOR INVERTIDO</div>
-      <div class="hero-amount num" id="i-val">${fmt(S.investment.value)}</div>
-      <div class="hero-sub">${upd ? 'Actualizado el ' + upd : 'Aún no has indicado el valor'} · No suma al dinero total</div>
-    </section>
-    <div class="row2" style="margin-top:8px">
-      <button class="btn btn-primary" id="i-aport">+ Aportación</button>
-      <button class="btn" id="i-upd">Actualizar valor</button>
-    </div>
-    ${ic ? `<div class="card">
-      <div class="card-title"><span>Este mes · ${fmtPct(ic.pct)}</span></div>
-      <div class="cat-head"><span class="muted num">Aportado ${fmt(ic.spent)} de ${fmt(ic.limit)}</span><span class="cat-rest num ${levelOf(ic.ratio)}">${fmt(ic.left)}</span></div>
-      ${barHtml(ic.ratio)}
-    </div>` : ''}
-    <div class="card">
-      <div class="card-title"><span>Aportaciones</span><span class="small dim num">Total ${fmt(totalAport)}</span></div>
-      ${mvList(aports, null)}
-    </div>
-    <div class="infobox">Las aportaciones salen de tu <b>cuenta</b> y cuentan contra el límite de inversión. Al aportar, el importe se suma al valor invertido; cuando quieras, pon el valor real que veas en tu app de inversión con <b>Actualizar valor</b>.</div>`;
-  countUp($('#i-val'), 'inv', S.investment.value);
-  bindMvClicks(view);
-  $('#i-aport').addEventListener('click', () => openMovementForm('aportacion'));
-  $('#i-upd').addEventListener('click', openInvestmentValue);
-}
-
-function openInvestmentValue() {
-  openSheet('Valor invertido', `
-    <div class="amount-input"><input id="f-amt" inputmode="decimal" placeholder="0" value="${amountToInput(S.investment.value)}" autocomplete="off"><span class="cur">€</span></div>
-    <div class="infobox" style="margin-top:0">Pon el valor total actual de todo lo que tienes invertido.</div>
-    <div class="sheet-actions"><button class="btn btn-primary" id="f-save">Guardar</button></div>`, sh => {
-    const inp = $('#f-amt', sh);
-    inp.focus();
-    $('#f-save', sh).addEventListener('click', () => {
-      const v = parseAmount(inp.value || '0');
-      if (Number.isNaN(v) || v < 0) return toast('Cantidad no válida', 'warn');
-      S.investment = { value: v, updatedAt: Date.now() };
-      save(); closeSheet(); render();
-      toast('Valor de la inversión actualizado', 'ok');
-    });
-  });
-}
-
 /* ---------- Gráficas ---------- */
 function donutSvg(items, total) {
   const R = 80, W = 24;
@@ -760,6 +707,7 @@ function renderCharts() {
   for (const m of S.movements) {
     if (m.type === 'gasto') {
       const c = catById(m.categoryId);
+      if (c && c.kind === 'inversion') continue;
       const k = c ? c.name : 'Otros';
       glob[k] = (glob[k] || 0) + m.amount;
     } else if (m.type === 'fijo') {
@@ -835,12 +783,6 @@ function renderSettings() {
       <div class="small dim" style="margin-top:10px">Toca el nombre de una categoría para renombrarla o eliminarla.</div>
     </div>
 
-    <div class="section-label">Atajo de iPhone</div>
-    <div class="card howto">
-      <div class="muted small" style="line-height:1.5">El atajo copia una frase como <code class="k">12,50 comida efectivo</code> y la app la importa con el botón <b>Importar gasto desde el atajo</b> de Inicio. Si no dices cuenta o efectivo, se apunta en la cuenta. Palabras que entiende para la categoría:</div>
-      <div class="chips" style="margin-top:10px">${spendCats().map(c => `<code class="k">${esc(shortKey(c))}</code>`).join('')}</div>
-    </div>
-
     <div class="section-label">Datos</div>
     <div class="card">
       <button class="list-row" id="s-reset" style="color:#FF8590"><span class="t">Borrar todos los datos</span>${ICON.chev}</button>
@@ -880,10 +822,6 @@ function renderSettings() {
     UI.tab = 'inicio';
     render();
   });
-}
-
-function shortKey(c) {
-  return norm(c.name).split(/[\s/(]+/)[0];
 }
 
 function openBalanceFix() {
@@ -1063,7 +1001,7 @@ function openMovementForm(type, m = null, preset = {}) {
   let body = `<div class="amount-input"><input id="f-amt" inputmode="decimal" placeholder="0" value="${amountToInput(f.amount)}" autocomplete="off"><span class="cur">€</span></div>`;
 
   if (type === 'gasto') {
-    const cats = spendCats();
+    const cats = pickCats();
     if (f.categoryId && !cats.find(c => c.id === f.categoryId) && editing) cats.push({ id: f.categoryId, name: 'Otros', color: OTHER_COLOR });
     body += `<div class="field" style="margin-top:4px"><span class="field-label">Categoría</span><div class="chips" id="f-cats">
       ${cats.map(c => { const sc = st.cats.find(x => x.id === c.id); return `<button class="chip ${c.id === f.categoryId ? 'on' : ''}" data-c="${c.id}"><span class="dot" style="background:${c.color}"></span>${esc(c.name)}${sc && sc.limit > 0 ? ` <span class="left num">${fmt(sc.left)}</span>` : ''}</button>`; }).join('')}
@@ -1129,132 +1067,6 @@ function openMovementForm(type, m = null, preset = {}) {
       if (type === 'aportacion') S.investment.value = round2(Math.max(0, (S.investment.value || 0) - m.amount));
       save(); closeSheet(); render();
       toast('Movimiento borrado', 'ok');
-    });
-  });
-}
-
-/* =========================================================
-   Importar gastos del atajo (portapapeles)
-   Formato por línea: CF;20261023143005;12,50;comida;efectivo[;nota]
-   ========================================================= */
-function parseShortcutText(text) {
-  const out = [];
-  for (const raw of String(text || '').split(/[\r\n]+/)) {
-    const line = raw.trim();
-    if (!/^CF\s*;/i.test(line)) continue;
-    const p = line.split(';').map(s => s.trim());
-    const [, id, amountS, catS, accS, ...rest] = p;
-    const amount = parseAmount(amountS);
-    if (!id || !(amount > 0)) continue;
-    const digits = id.replace(/\D/g, '');
-    let date = todayISO();
-    if (digits.length >= 8) {
-      const d = `${digits.slice(0, 4)}-${digits.slice(4, 6)}-${digits.slice(6, 8)}`;
-      if (!Number.isNaN(Date.parse(d))) date = d;
-    }
-    out.push({ id, amount, date, categoryId: matchCategory(catS), catText: catS || '', account: norm(accS).startsWith('efe') ? 'efectivo' : 'cuenta', note: rest.join(';') });
-  }
-  return out;
-}
-/* Palabras habituales que apuntan a una categoría (por el comienzo de su nombre) */
-const CAT_ALIASES = {
-  super: 'comida', mercadona: 'comida', compra: 'comida', nevera: 'comida', lidl: 'comida', carrefour: 'comida',
-  gasolinera: 'gasolina', diesel: 'gasolina', coche: 'gasolina', transporte: 'gasolina', bus: 'gasolina', metro: 'gasolina', taxi: 'gasolina', tren: 'gasolina', parking: 'gasolina',
-  farmacia: 'salud', medico: 'salud', peluqueria: 'salud', cuidado: 'salud',
-  restaurante: 'restauracion', bar: 'restauracion', cena: 'restauracion', comida_fuera: 'restauracion', cafe: 'restauracion', copas: 'restauracion', fuera: 'restauracion',
-  colonia: 'ropa', colonias: 'ropa', zapatillas: 'ropa', perfume: 'ropa',
-  cine: 'ocio', concierto: 'ocio', viaje: 'ocio',
-};
-function parseFreeText(text) {
-  const out = [];
-  for (const raw of String(text || '').split(/[\r\n]+/)) {
-    const line = raw.trim();
-    const m = line.match(/\d+(?:[.,]\d+)*/);
-    if (!m) continue;
-    const amount = parseAmount(m[0]);
-    if (!(amount > 0)) continue;
-    const words = (line.slice(0, m.index) + ' ' + line.slice(m.index + m[0].length))
-      .replace(/€|\beuros?\b|\bcon\b|\ben\b|\bde\b/gi, ' ').split(/\s+/).filter(Boolean);
-    let account = 'cuenta', categoryId = null;
-    const noteWords = [];
-    for (const w of words) {
-      const n = norm(w);
-      if (n.startsWith('efect') || n === 'cash' || n === 'metalico') { account = 'efectivo'; continue; }
-      if (['cuenta', 'tarjeta', 'banco', 'bizum'].includes(n)) { account = 'cuenta'; continue; }
-      if (!categoryId && n.length >= 3) {
-        const id = matchCategory(CAT_ALIASES[n] || n);
-        if (id) { categoryId = id; continue; }
-      }
-      noteWords.push(w);
-    }
-    out.push({ id: `T:${todayISO()}:${norm(line)}`, amount, date: todayISO(), categoryId, catText: words.join(' '), account, note: noteWords.join(' '), free: true });
-  }
-  return out;
-}
-function matchCategory(s) {
-  const q = norm(s);
-  if (!q) return null;
-  const cats = spendCats();
-  return (cats.find(c => norm(c.name) === q) || cats.find(c => norm(c.name).startsWith(q)) || cats.find(c => norm(c.name).includes(q)) || cats.find(c => q.startsWith(shortKey(c))))?.id || null;
-}
-
-async function importFromClipboard() {
-  let text = null;
-  try {
-    if (navigator.clipboard && navigator.clipboard.readText) text = await navigator.clipboard.readText();
-  } catch (e) { text = null; }
-  if (text === null) return openPasteSheet();
-  handleImportText(text, true);
-}
-function handleImportText(text, fromClipboard) {
-  let items = parseShortcutText(text);
-  if (!items.length) items = parseFreeText(text);
-  if (!items.length) {
-    if (fromClipboard) return openPasteSheet('No he encontrado ningún gasto en el portapapeles. Usa el atajo y vuelve a intentarlo, o escribe aquí el gasto (ej. <b>12,50 comida efectivo</b>):');
-    return toast('No encuentro ningún importe en ese texto', 'warn');
-  }
-  const done = i => S.imported.includes(i.id) || S.movements.some(m => m.importId === i.id);
-  const fresh = items.filter(i => !done(i));
-  if (fresh.length) return openImportReview(fresh);
-  // Frase libre ya importada hoy: puede ser un gasto repetido de verdad, se deja importar avisando
-  if (items.every(i => i.free)) return openImportReview(items, true);
-  toast('Ese gasto ya estaba importado', 'warn');
-}
-function openPasteSheet(msg) {
-  openSheet('Importar del atajo', `
-    <div class="infobox" style="margin-top:0">${msg || 'Mantén pulsado el recuadro y elige <b>Pegar</b>.'}</div>
-    <div class="field"><textarea id="f-paste" class="input" placeholder="12,50 comida efectivo"></textarea></div>
-    <div class="sheet-actions"><button class="btn btn-primary" id="f-go">Importar</button></div>`, sh => {
-    $('#f-go', sh).addEventListener('click', () => handleImportText($('#f-paste', sh).value, false));
-  });
-}
-function openImportReview(items, repeated = false) {
-  const cats = spendCats();
-  openSheet(items.length === 1 ? 'Gasto del atajo' : `${items.length} gastos del atajo`, `
-    ${repeated ? '<div class="warnbox" style="margin:0 0 12px">Hoy ya importaste un gasto igual. Impórtalo solo si es otro gasto distinto.</div>' : ''}
-    ${items.map((it, i) => `<div class="card" style="margin-top:${i ? 10 : 0}px">
-      <div class="cat-head"><span class="cat-rest num" style="font-size:24px">${fmt(it.amount)}</span><span class="muted small">${esc(fmtDay(it.date))} · ${it.account === 'efectivo' ? 'Efectivo' : 'Cuenta'}</span></div>
-      ${it.note ? `<div class="small dim" style="margin-top:4px">Nota: ${esc(it.note)}</div>` : ''}
-      ${it.categoryId ? '' : `<div class="small" style="color:var(--warn);margin-top:6px">No reconozco la categoría “${esc(it.catText)}”. Elige una:</div>`}
-      <div class="chips" style="margin-top:10px" data-imp="${i}">${cats.map(c => `<button class="chip ${c.id === it.categoryId ? 'on' : ''}" data-c="${c.id}"><span class="dot" style="background:${c.color}"></span>${esc(c.name)}</button>`).join('')}</div>
-    </div>`).join('')}
-    <div class="sheet-actions"><button class="btn btn-primary" id="f-imp">Importar ${items.length === 1 ? 'gasto' : items.length + ' gastos'}</button></div>`, sh => {
-    $$('[data-imp]', sh).forEach(group => $$('.chip', group).forEach(ch => ch.addEventListener('click', () => {
-      $$('.chip', group).forEach(x => x.classList.toggle('on', x === ch));
-      items[Number(group.dataset.imp)].categoryId = ch.dataset.c;
-    })));
-    $('#f-imp', sh).addEventListener('click', () => {
-      if (items.some(i => !i.categoryId)) return toast('Elige la categoría de cada gasto', 'warn');
-      const befores = items.map(it => spentInCat(it.categoryId, ymOf(it.date)));
-      for (const it of items) {
-        S.movements.push({ id: uid(), type: 'gasto', amount: it.amount, date: it.date, account: it.account, categoryId: it.categoryId, note: it.note, importId: it.id, createdAt: Date.now() });
-        if (!S.imported.includes(it.id)) S.imported.push(it.id);
-      }
-      S.imported = S.imported.slice(-500);
-      save(); closeSheet(); render();
-      let warned = false;
-      items.forEach((it, i) => { if (!warned) warned = limitWarning(it.categoryId, ymOf(it.date), befores[i]); });
-      if (!warned) toast(items.length === 1 ? 'Gasto importado' : `${items.length} gastos importados`, 'ok');
     });
   });
 }

@@ -6,8 +6,7 @@ App web (PWA) para controlar gastos personales desde el iPhone. Funciona sin con
 - Gastos, ingresos y traspasos manuales, editables y borrables.
 - Gastos fijos que se cobran solos de la cuenta el día indicado.
 - Reparto mensual por porcentajes, con barras que se ponen naranjas al 80 % y rojas al pasarte.
-- Inversión separada, cierre de mes, historial y gráficas.
-- Atajo de iPhone para apuntar gastos rápidos (ver [ATAJO.md](ATAJO.md)).
+- Cierre de mes, previsión de meses futuros, historial y gráficas.
 
 ---
 
