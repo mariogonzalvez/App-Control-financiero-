@@ -158,7 +158,9 @@ const setupYM = () => (S.setupDate ? ymOf(S.setupDate) : curYM());
 
 function balances() {
   const b = { cuenta: Number(S.initial.cuenta) || 0, efectivo: Number(S.initial.efectivo) || 0 };
+  const t = todayISO();
   for (const m of S.movements) {
+    if (m.date > t) continue; // previsto: aún no ha ocurrido
     const a = Number(m.amount) || 0;
     if (m.type === 'ingreso') b[m.account] += a;
     else if (m.type === 'traspaso') { b[m.account] -= a; b[m.to] += a; }
@@ -338,6 +340,7 @@ function sortMv(list) {
 }
 function mvRow(m, acc) {
   const i = mvInfo(m);
+  if (m.date > todayISO()) i.sub.unshift('Previsto');
   let amt;
   if (acc) amt = deltaFor(m, acc);
   else amt = m.type === 'ingreso' ? m.amount : m.type === 'traspaso' ? null : -m.amount;
@@ -489,14 +492,7 @@ function renderHome() {
       </div>
     </div>`;
 
-  view.classList.add('has-actionbar');
-  const bar = document.createElement('div');
-  bar.className = 'actionbar';
-  bar.innerHTML = `<button class="btn btn-primary" id="a-gasto">+ Gasto</button>
-    <button class="btn" id="a-ingreso">+ Ingreso</button>
-    <button class="btn" id="a-traspaso">Traspaso</button>`;
-  $('#app').appendChild(bar);
-  document.documentElement.style.setProperty('--tabbar-h', $('#tabbar').offsetHeight + 'px');
+  addActionBar();
 
   countUp($('#h-total'), 'total', b.total);
   countUp($('#h-acc'), 'acc-' + UI.acc, b[UI.acc]);
@@ -517,9 +513,27 @@ function renderHome() {
     openMovementForm('gasto', null, { categoryId: el.dataset.cat });
   }));
   $('#imp').addEventListener('click', importFromClipboard);
-  $('#a-gasto').addEventListener('click', () => openMovementForm('gasto'));
-  $('#a-ingreso').addEventListener('click', () => openMovementForm('ingreso'));
-  $('#a-traspaso').addEventListener('click', () => openMovementForm('traspaso'));
+}
+/* Botones fijos abajo. En la vista Mes, la fecha propuesta es la del mes que estás viendo. */
+function addActionBar(ym = null) {
+  $$('.actionbar').forEach(el => el.remove());
+  view.classList.add('has-actionbar');
+  const bar = document.createElement('div');
+  bar.className = 'actionbar';
+  bar.innerHTML = `<button class="btn btn-primary" data-new="gasto">+ Gasto</button>
+    <button class="btn" data-new="ingreso">+ Ingreso</button>
+    <button class="btn" data-new="traspaso">Traspaso</button>`;
+  $('#app').appendChild(bar);
+  document.documentElement.style.setProperty('--tabbar-h', $('#tabbar').offsetHeight + 'px');
+  $$('[data-new]', bar).forEach(b => b.addEventListener('click', () => {
+    openMovementForm(b.dataset.new, null, ym ? { date: defaultDateFor(ym) } : {});
+  }));
+}
+function defaultDateFor(ym) {
+  const cur = curYM();
+  if (ym === cur) return todayISO();
+  if (ym > cur) return `${ym}-01`;
+  return `${ym}-${pad(daysIn(ym))}`;
 }
 function placeThumb(seg) {
   const on = $('button.on', seg);
@@ -530,13 +544,14 @@ function placeThumb(seg) {
 }
 
 /* ---------- Mes (reparto, cierre y movimientos) ---------- */
+const MAX_AHEAD = 12;
 function monthSelector() {
-  const min = setupYM(), max = curYM();
-  const isCur = UI.viewYM === max;
+  const min = setupYM(), cur = curYM(), max = addMonths(cur, MAX_AHEAD);
+  const label = UI.viewYM === cur ? 'Mes en curso' : UI.viewYM < cur ? 'Mes cerrado' : 'Previsión';
   return `<div class="monthsel">
     <button id="m-prev" ${UI.viewYM <= min ? 'disabled' : ''} aria-label="Mes anterior">${ICON.left}</button>
-    <div class="m">${fmtMonth(UI.viewYM)}<small>${isCur ? 'Mes en curso' : 'Mes cerrado'}</small></div>
-    <button id="m-next" ${isCur ? 'disabled' : ''} aria-label="Mes siguiente">${ICON.right}</button>
+    <div class="m">${fmtMonth(UI.viewYM)}<small>${label}</small></div>
+    <button id="m-next" ${UI.viewYM >= max ? 'disabled' : ''} aria-label="Mes siguiente">${ICON.right}</button>
   </div>`;
 }
 function bindMonthSelector(rerender) {
@@ -577,8 +592,11 @@ function closureCard(st, withTitle = true) {
 function renderMonth() {
   const st = monthStats(UI.viewYM);
   const isCur = UI.viewYM === curYM();
+  const isFuture = UI.viewYM > curYM();
+  const mName = MONTHS[Number(UI.viewYM.slice(5)) - 1];
   view.innerHTML = `
     ${monthSelector()}
+    ${isFuture ? `<div class="infobox">Estás planificando <b>${mName}</b>. Apunta ya los ingresos y gastos que sabes que tendrás: se calculan los límites, pero <b>no cambian tu saldo</b> hasta que llegue su fecha.</div>` : ''}
     <div class="card">
       <div class="stats">
         <div class="stat"><div class="l">Ingresos</div><div class="v num pos">${fmt(st.income)}</div></div>
@@ -589,15 +607,16 @@ function renderMonth() {
       ${st.pct !== 100 ? `<div class="warnbox">⚠️ Los porcentajes suman ${fmtPct(st.pct)}, no 100&nbsp;%. Corrígelos en Ajustes.</div>` : ''}
     </div>
     <div class="card">
-      <div class="card-title"><span>Reparto</span>${isCur ? `<span class="small dim num">Ahorro estimado ${fmt(st.saved)}</span>` : ''}</div>
+      <div class="card-title"><span>Reparto</span>${isCur || isFuture ? `<span class="small dim num">Ahorro estimado ${fmt(st.saved)}</span>` : ''}</div>
       ${catRows(st)}
     </div>
-    ${!isCur ? closureCard(st) : ''}
+    ${!isCur && !isFuture ? closureCard(st) : ''}
     <div class="card">
       <div class="card-title"><span>Movimientos</span><span class="small dim">${st.ms.length}</span></div>
       ${mvList(st.ms, null, UI.listLimit)}
       ${st.ms.length > UI.listLimit ? '<button class="btn btn-ghost btn-block btn-small" id="more" style="margin-top:10px">Ver más</button>' : ''}
     </div>`;
+  addActionBar(UI.viewYM);
   bindMonthSelector(renderMonth);
   bindMvClicks(view);
   $('#more')?.addEventListener('click', () => { UI.listLimit += 50; renderMonth(); animateBars(view); });
@@ -972,6 +991,20 @@ function closeSheet() {
   if (sheetOnClose) { const f = sheetOnClose; sheetOnClose = null; f(); }
 }
 $('#sheet-backdrop').addEventListener('click', closeSheet);
+$('#sheet').addEventListener('keydown', e => {
+  if (e.key === 'Enter' && e.target.matches('input')) { e.preventDefault(); $('#f-save, #f-go, #f-imp', $('#sheet'))?.click(); }
+});
+if (window.visualViewport) {
+  const vv = window.visualViewport;
+  const fitKeyboard = () => {
+    const kb = Math.max(0, window.innerHeight - vv.height - vv.offsetTop);
+    document.documentElement.style.setProperty('--kb', kb + 'px');
+    document.documentElement.style.setProperty('--vvh', vv.height + 'px');
+  };
+  vv.addEventListener('resize', fitKeyboard);
+  vv.addEventListener('scroll', fitKeyboard);
+  fitKeyboard();
+}
 (() => { // deslizar hacia abajo para cerrar
   const sh = $('#sheet');
   let y0 = null, dy = 0;
@@ -1009,7 +1042,7 @@ function openMovementForm(type, m = null, preset = {}) {
   const editing = !!m;
   const f = {
     amount: m ? m.amount : null,
-    date: m ? m.date : todayISO(),
+    date: m ? m.date : (preset.date || todayISO()),
     note: m ? m.note || '' : '',
     account: m ? m.account : (preset.account || (type === 'ingreso' ? 'cuenta' : UI.acc)),
     to: m && m.to ? m.to : null,
@@ -1046,11 +1079,9 @@ function openMovementForm(type, m = null, preset = {}) {
   if (type === 'fijo') {
     body += `<div class="small dim" style="text-align:center;margin-top:-4px">Cobro automático de “${esc(f.note)}”. Para cambiar el importe de los próximos meses, ve a Ajustes.</div>`;
   }
-  body += `<div class="row2">
-      <div class="field"><label for="f-date">Fecha</label><input id="f-date" type="date" class="input" value="${f.date}"></div>
-      <div class="field"><label for="f-note">Nota</label><input id="f-note" class="input" value="${esc(f.note)}" placeholder="${type === 'ingreso' ? 'Ej. Tambora' : 'Opcional'}" autocomplete="off"></div>
-    </div>
-    <div class="sheet-actions">${editing ? '<button class="btn btn-danger" id="f-del">Borrar</button>' : ''}<button class="btn btn-primary" id="f-save">${editing ? 'Guardar' : 'Añadir'}</button></div>`;
+  body += `<div class="field"><label for="f-date">Fecha</label><input id="f-date" type="date" class="input" value="${f.date}"></div>
+    <div class="field"><label for="f-note">Nota</label><input id="f-note" class="input" value="${esc(f.note)}" placeholder="${type === 'ingreso' ? 'Ej. Tambora, asesoría…' : 'Opcional'}" autocomplete="off" enterkeyhint="done"></div>
+    <div class="sheet-actions">${editing ? '<button class="btn btn-danger" id="f-del">Borrar</button>' : ''}<button class="btn btn-primary" id="f-save">${editing ? 'Guardar cambios' : 'Guardar ' + TITLES[type].toLowerCase()}</button></div>`;
 
   const NEW_TITLES = { gasto: 'Nuevo gasto', ingreso: 'Nuevo ingreso', traspaso: 'Traspaso', aportacion: 'Nueva aportación', fijo: 'Gasto fijo' };
   openSheet(editing ? 'Editar ' + TITLES[type].toLowerCase() : NEW_TITLES[type], body, sh => {
@@ -1082,7 +1113,8 @@ function openMovementForm(type, m = null, preset = {}) {
       if (!editing) S.movements.push(target);
       save(); closeSheet(); render();
       const warned = trackCat ? limitWarning(trackCat, ymOf(date), before) : false;
-      if (!warned) toast(editing ? 'Cambios guardados' : `${TITLES[type]} de ${fmt(amount)} ${type === 'aportacion' ? 'añadida' : 'añadido'}`, 'ok');
+      const future = date > todayISO() ? ' (previsto)' : '';
+      if (!warned) toast(editing ? 'Cambios guardados' : `${TITLES[type]} de ${fmt(amount)} ${type === 'aportacion' ? 'añadida' : 'añadido'}${future}`, 'ok');
     });
     $('#f-del', sh)?.addEventListener('click', () => {
       if (!confirm('¿Borrar este movimiento?')) return;
@@ -1198,7 +1230,7 @@ function maybeShowClosure() {
    Arranque
    ========================================================= */
 function refresh() {
-  if (UI.viewYM > curYM()) UI.viewYM = curYM();
+  if (UI.viewYM > addMonths(curYM(), MAX_AHEAD)) UI.viewYM = curYM();
   if (tick()) render();
 }
 document.addEventListener('visibilitychange', () => { if (!document.hidden) { if (tick()) render(); maybeShowClosure(); } });
