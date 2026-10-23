@@ -21,11 +21,9 @@ Abre la app **Atajos** → pestaña **Atajos** → botón **+** (arriba a la der
    `Comida` · `Gasolina` · `Salud` · `Restauración` · `Ropa` · `Ocio`
 4. **Elegir de la lista** (pregunta: `Categoría`).
 5. **Establecer variable** → nombre: `Categoría` (valor: "Elemento elegido").
-6. **Elegir del menú** con dos opciones: `Cuenta` y `Efectivo`.
-   - Dentro de **Cuenta** añade **Texto** con `Cuenta`.
-   - Dentro de **Efectivo** añade **Texto** con `Efectivo`.
-7. **Establecer variable** → nombre: `Origen` (valor: "Resultado de Menú").
-8. **Fecha actual**.
+6. **Lista** con dos elementos: `Cuenta` y `Efectivo`.
+7. **Elegir de la lista** (pregunta: `¿Cómo has pagado?`) y después **Establecer variable** → nombre: `Origen`.
+8. **Fecha** (deja "Fecha actual").
 9. **Formatear fecha** → Formato de fecha: **Personalizado**, cadena: `yyyyMMddHHmmss`.
 10. **Texto** y escribe exactamente (las variables se insertan tocando encima de la barra del teclado):
     `CF;`[Fecha formateada]`;`[Importe]`;`[Categoría]`;`[Origen]
