@@ -145,8 +145,6 @@ button { font: inherit; color: inherit; border: 0; background: none; cursor: poi
 .actionbar .btn { height: 58px; flex: 1; font-size: 15px; padding: 0 8px; }
 .btn-small { height: 36px; padding: 0 12px; font-size: 14px; border-radius: 12px; }
 
-.chip-import { display: flex; align-items: center; gap: 10px; width: 100%; margin-top: 14px; padding: 12px 14px; border-radius: 14px; border: 1px dashed var(--line-2); color: var(--muted); font-size: 14px; font-weight: 600; text-align: left; }
-.chip-import svg { width: 20px; height: 20px; flex: none; stroke: var(--accent-2); fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
 
 /* ---------- Movimientos ---------- */
 .mv-group { margin-top: 10px; }
