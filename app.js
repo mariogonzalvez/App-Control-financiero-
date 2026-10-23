@@ -5,7 +5,7 @@
    ========================================================= */
 
 const STORAGE_KEY = 'cf-data-v1';
-const APP_VERSION = '5';
+const APP_VERSION = '6';
 const PALETTE = ['#3987e5', '#d95926', '#199e70', '#c98500', '#d55181', '#008300', '#9085e9', '#e66767'];
 const OTHER_COLOR = '#7d8aa5';
 const FIXED_COLOR = '#5f7bb0';
@@ -134,7 +134,7 @@ function defaultState() {
 }
 
 let S = load();
-const UI = { tab: 'inicio', acc: 'cuenta', viewYM: curYM(), listLimit: 25, donutSel: null, barsN: 12 };
+const UI = { tab: 'inicio', acc: 'cuenta', viewYM: curYM(), listLimit: 25, donutSel: null, barsN: 12, query: '' };
 
 function load() {
   try {
@@ -312,6 +312,7 @@ const ICON = {
   left: '<svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg>',
   right: '<svg viewBox="0 0 24 24"><path d="M9 5l7 7-7 7"/></svg>',
   chev: '<svg class="chev" viewBox="0 0 24 24"><path d="M9 5l7 7-7 7"/></svg>',
+  search: '<svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>',
   swap: '<svg viewBox="0 0 24 24"><path d="M7 4L3 8l4 4M3 8h14M17 20l4-4-4-4M21 16H7"/></svg>',
   plus: '<svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>',
   repeat: '<svg viewBox="0 0 24 24"><path d="M17 2l4 4-4 4"/><path d="M3 11V9a3 3 0 0 1 3-3h15M7 22l-4-4 4-4"/><path d="M21 13v2a3 3 0 0 1-3 3H3"/></svg>',
@@ -481,6 +482,7 @@ function renderHome() {
     </div>
 
 
+    ${backupDue() ? `<button class="card warnbox" id="bk-remind" style="display:block;width:100%;text-align:left">💾 ${S.lastBackup ? 'Hace más de un mes que no haces' : 'Aún no has hecho'} una copia de seguridad. Toca aquí para hacerla.</button>` : ''}
     <div class="card">
       <div class="card-title"><span>Este mes · te queda</span><button class="link" id="to-month">Ver reparto</button></div>
       ${st.income <= 0 ? `<div class="infobox" style="margin:0 0 12px">Registra tus ingresos de ${MONTHS[Number(curYM().slice(5)) - 1]} para calcular los límites de cada categoría.</div>` : ''}
@@ -508,9 +510,15 @@ function renderHome() {
   bindMvClicks(view);
   $('#more')?.addEventListener('click', () => { UI.listLimit += 50; renderHome(); animateBars(view); });
   $('#to-month').addEventListener('click', () => { UI.viewYM = curYM(); go('mes'); });
+  $('#bk-remind')?.addEventListener('click', exportBackup);
   $$('[data-cat]', view).forEach(el => el.addEventListener('click', () => {
     openMovementForm('gasto', null, { categoryId: el.dataset.cat });
   }));
+}
+function backupDue() {
+  const DAY = 864e5;
+  if (S.lastBackup) return Date.now() - S.lastBackup > 30 * DAY;
+  return S.movements.length >= 5 && S.setupDate && Date.now() - new Date(S.setupDate).getTime() > 7 * DAY;
 }
 /* Botones fijos abajo. En la vista Mes, la fecha propuesta es la del mes que estás viendo. */
 function addActionBar(ym = null) {
@@ -610,14 +618,30 @@ function renderMonth() {
     </div>
     ${!isCur && !isFuture ? closureCard(st) : ''}
     <div class="card">
-      <div class="card-title"><span>Movimientos</span><span class="small dim">${st.ms.length}</span></div>
-      ${mvList(st.ms, null, UI.listLimit)}
-      ${st.ms.length > UI.listLimit ? '<button class="btn btn-ghost btn-block btn-small" id="more" style="margin-top:10px">Ver más</button>' : ''}
+      <div class="search">${ICON.search}<input id="q" type="search" placeholder="Buscar en todos los movimientos" value="${esc(UI.query)}" autocomplete="off" enterkeyhint="search"></div>
+      <div id="mv-results"></div>
     </div>`;
   addActionBar(UI.viewYM);
   bindMonthSelector(renderMonth);
-  bindMvClicks(view);
-  $('#more')?.addEventListener('click', () => { UI.listLimit += 50; renderMonth(); animateBars(view); });
+  const renderResults = () => {
+    const q = UI.query.trim();
+    const list = q ? S.movements.filter(m => matchesQuery(m, q)) : st.ms;
+    const head = q
+      ? `<div class="card-title" style="margin-top:14px"><span>Resultados</span><span class="small dim num">${list.length} · ${fmt(sum(list.filter(m => m.type !== 'ingreso' && m.type !== 'traspaso'), m => m.amount))} gastado</span></div>`
+      : `<div class="card-title" style="margin-top:14px"><span>Movimientos de ${MONTHS[Number(UI.viewYM.slice(5)) - 1]}</span><span class="small dim">${list.length}</span></div>`;
+    $('#mv-results').innerHTML = head + (q && !list.length ? '<div class="empty">No hay movimientos que coincidan</div>' : mvList(list, null, UI.listLimit))
+      + (list.length > UI.listLimit ? '<button class="btn btn-ghost btn-block btn-small" id="more" style="margin-top:10px">Ver más</button>' : '');
+    bindMvClicks($('#mv-results'));
+    $('#more')?.addEventListener('click', () => { UI.listLimit += 50; renderResults(); });
+  };
+  $('#q').addEventListener('input', e => { UI.query = e.target.value; UI.listLimit = 25; renderResults(); });
+  renderResults();
+}
+/* Busca por categoría, nota, tipo, cuenta, importe (12,50 / 12.5) o fecha */
+function matchesQuery(m, q) {
+  const i = mvInfo(m);
+  const hay = norm([i.title, ...i.sub, m.note, fmt(m.amount), String(m.amount), String(m.amount).replace('.', ','), fmtDay(m.date), m.date].join(' ')).replace(/\u00a0/g, ' ');
+  return norm(q).split(/\s+/).every(w => hay.includes(w));
 }
 
 /* ---------- Gráficas ---------- */
@@ -651,6 +675,35 @@ function monthBreakdown(ym) {
   if (st.orphan > 0) items.push({ name: 'Otros', value: st.orphan, color: OTHER_COLOR });
   if (st.fixedPaid > 0) items.push({ name: 'Gastos fijos', value: st.fixedPaid, color: FIXED_COLOR });
   return items;
+}
+
+function savingsSvg(pts) {
+  const W = 340, H = 170, padL = 44, padR = 10, padB = 22, padT = 12;
+  const vals = pts.map(p => p.cum);
+  const lo = Math.min(0, ...vals), hi = Math.max(1, ...vals);
+  const span = hi - lo || 1;
+  const step = (() => { const p = Math.pow(10, Math.floor(Math.log10(span))); return [1, 2, 2.5, 5, 10].find(k => k * p >= span / 3) * p; })();
+  const top = Math.ceil(hi / step) * step, bot = Math.floor(lo / step) * step;
+  const ih = H - padT - padB, iw = W - padL - padR;
+  const y = v => padT + ih - ((v - bot) / (top - bot)) * ih;
+  const x = i => padL + (pts.length === 1 ? iw / 2 : (iw * i) / (pts.length - 1));
+  let g = '';
+  for (let v = bot; v <= top + 1e-6; v += step) {
+    g += `<line x1="${padL}" x2="${W - padR}" y1="${y(v)}" y2="${y(v)}" stroke="rgba(120,160,255,${Math.abs(v) < 1e-6 ? .3 : .1})"/>`;
+    g += `<text x="${padL - 6}" y="${y(v) + 3}" text-anchor="end">${fmtShort(v)}</text>`;
+  }
+  const line = pts.map((p, i) => `${i ? 'L' : 'M'}${x(i)} ${y(p.cum)}`).join(' ');
+  if (pts.length > 1) g += `<path d="${line} L${x(pts.length - 1)} ${y(Math.max(bot, 0))} L${x(0)} ${y(Math.max(bot, 0))} Z" fill="rgba(61,220,151,.12)"/>`;
+  g += `<path d="${line}" fill="none" stroke="#3DDC97" stroke-width="2" stroke-linejoin="round"/>`;
+  const every = Math.ceil(pts.length / 6);
+  pts.forEach((p, i) => {
+    const sel = UI.saveSel === i;
+    g += `<circle cx="${x(i)}" cy="${y(p.cum)}" r="${sel ? 6 : 4}" fill="${p.estimated ? '#0E1A36' : '#3DDC97'}" stroke="#3DDC97" stroke-width="2"/>`;
+    if (i % every === 0 || i === pts.length - 1) g += `<text x="${x(i)}" y="${H - 6}" text-anchor="middle" ${sel ? 'style="fill:#EAF1FF;font-weight:700"' : ''}>${fmtMonthShort(p.ym)}</text>`;
+    const w = pts.length === 1 ? iw : iw / (pts.length - 1);
+    g += `<rect x="${x(i) - w / 2}" y="0" width="${w}" height="${H}" fill="transparent" data-s="${i}"/>`;
+  });
+  return `<svg class="bars-svg" viewBox="0 0 ${W} ${H}">${g}</svg>`;
 }
 
 function barsSvg(months) {
@@ -702,6 +755,18 @@ function renderCharts() {
   if (UI.barSel === undefined || UI.barSel >= months.length) UI.barSel = months.length - 1;
   const bm = months[UI.barSel];
 
+  // Ahorro acumulado mes a mes (el mes en curso es una estimación)
+  const savePts = [];
+  let cum = 0;
+  for (let ym = start; ym <= curYM(); ym = addMonths(ym, 1)) {
+    const saved = monthStats(ym).saved;
+    cum = round2(cum + saved);
+    savePts.push({ ym, saved, cum, estimated: ym === curYM() });
+  }
+  if (UI.saveSel === undefined || UI.saveSel >= savePts.length) UI.saveSel = savePts.length - 1;
+  const sp = savePts[UI.saveSel];
+  const closedTotal = round2(sum(savePts.filter(p => !p.estimated), p => p.saved));
+
   // Acumulado global
   const glob = {};
   for (const m of S.movements) {
@@ -740,6 +805,16 @@ function renderCharts() {
     </div>
 
     <div class="card">
+      <div class="card-title"><span>Ahorro acumulado</span></div>
+      <div class="stats" style="margin-bottom:12px">
+        <div class="stat"><div class="l">Meses cerrados</div><div class="v num ${closedTotal < 0 ? 'neg' : 'pos'}">${fmt(closedTotal)}</div></div>
+        <div class="stat"><div class="l">Contando este mes</div><div class="v num ${cum < 0 ? 'neg' : 'pos'}">${fmt(cum)}</div></div>
+      </div>
+      <div id="savings">${savingsSvg(savePts)}</div>
+      <div class="bars-tip num">${sp ? `<b style="text-transform:capitalize">${fmtMonth(sp.ym)}</b>${sp.estimated ? ' (estimado)' : ''} · Ahorrado <b style="color:${sp.saved >= 0 ? 'var(--good)' : 'var(--bad)'}">${fmt(sp.saved, { sign: true })}</b> · Acumulado <b>${fmt(sp.cum)}</b>` : ''}</div>
+    </div>
+
+    <div class="card">
       <div class="card-title"><span>¿En qué se me va el dinero?</span><span class="small dim num">${fmt(globTotal)}</span></div>
       <div class="small dim" style="margin:-4px 0 6px">Acumulado desde que usas la app</div>
       ${globArr.length ? globArr.map(x => `<div class="hbar"><div class="top"><span>${esc(x.name)}</span><span class="num">${fmt(x.v)} <span class="dim small">${Math.round(x.v / globTotal * 100)}&nbsp;%</span></span></div>${barHtml(x.v / globMax, ' ')}</div>`).join('') : '<div class="empty">Aún no hay gastos</div>'}
@@ -750,6 +825,7 @@ function renderCharts() {
   $$('#donut path[data-i]').forEach(p => p.addEventListener('click', () => pick(Number(p.dataset.i))));
   $$('.legend button').forEach(b => b.addEventListener('click', () => pick(Number(b.dataset.i))));
   $$('#bars [data-b]').forEach(r => r.addEventListener('click', () => { UI.barSel = Number(r.dataset.b); renderCharts(); animateBars(view); }));
+  $$('#savings [data-s]').forEach(r => r.addEventListener('click', () => { UI.saveSel = Number(r.dataset.s); renderCharts(); animateBars(view); }));
 }
 
 /* ---------- Ajustes ---------- */
@@ -783,6 +859,14 @@ function renderSettings() {
       <div class="small dim" style="margin-top:10px">Toca el nombre de una categoría para renombrarla o eliminarla.</div>
     </div>
 
+    <div class="section-label">Copia de seguridad</div>
+    <div class="card">
+      <button class="list-row" id="s-backup"><span class="t">Hacer copia de seguridad<small>${S.lastBackup ? 'Última: ' + new Date(S.lastBackup).toLocaleDateString('es-ES', { day: 'numeric', month: 'long', year: 'numeric' }) : 'Nunca has hecho una copia'}</small></span>${ICON.chev}</button>
+      <button class="list-row" id="s-restore"><span class="t">Recuperar una copia<small>Si cambias de iPhone o borras la app</small></span>${ICON.chev}</button>
+      <input type="file" id="s-file" accept="application/json,.json" hidden>
+      <div class="small dim" style="margin-top:8px;line-height:1.45">Al hacer la copia, elige <b>Guardar en Archivos</b> → <b>iCloud Drive</b>. Para recuperarla, elige ese archivo.</div>
+    </div>
+
     <div class="section-label">Datos</div>
     <div class="card">
       <button class="list-row" id="s-reset" style="color:#FF8590"><span class="t">Borrar todos los datos</span>${ICON.chev}</button>
@@ -814,6 +898,9 @@ function renderSettings() {
   $$('[data-rec]').forEach(b => b.addEventListener('click', () => openRecurringForm(S.recurring.find(r => r.id === b.dataset.rec))));
   $('#s-addrec').addEventListener('click', () => openRecurringForm(null));
   $('#s-bal').addEventListener('click', openBalanceFix);
+  $('#s-backup').addEventListener('click', exportBackup);
+  $('#s-restore').addEventListener('click', () => $('#s-file').click());
+  $('#s-file').addEventListener('change', e => { const f = e.target.files[0]; e.target.value = ''; if (f) importBackup(f); });
   $('#s-reset').addEventListener('click', () => {
     if (!confirm('¿Seguro que quieres borrar TODOS tus datos? No se puede deshacer.')) return;
     if (!confirm('Última confirmación: se borrarán todos los movimientos y ajustes.')) return;
@@ -822,6 +909,38 @@ function renderSettings() {
     UI.tab = 'inicio';
     render();
   });
+}
+
+/* Copia: archivo .json que se guarda en Archivos/iCloud con la hoja de compartir de iOS */
+async function exportBackup() {
+  const json = JSON.stringify({ app: 'control-financiero', version: APP_VERSION, exportedAt: new Date().toISOString(), data: S });
+  const name = `control-financiero-${todayISO()}.json`;
+  const file = new File([json], name, { type: 'application/json' });
+  const done = () => { S.lastBackup = Date.now(); save(); render(); toast('Copia de seguridad hecha', 'ok'); };
+  if (navigator.canShare && navigator.canShare({ files: [file] })) {
+    try { await navigator.share({ files: [file], title: 'Copia de Control Financiero' }); done(); }
+    catch (e) { if (e.name !== 'AbortError') toast('No se ha podido guardar la copia', 'bad'); }
+    return;
+  }
+  const url = URL.createObjectURL(file);
+  const a = document.createElement('a');
+  a.href = url; a.download = name;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 5000);
+  done();
+}
+function importBackup(file) {
+  const r = new FileReader();
+  r.onload = () => {
+    let d;
+    try { const j = JSON.parse(r.result); d = j.data || j; } catch (e) { d = null; }
+    if (!d || !Array.isArray(d.movements) || !Array.isArray(d.categories)) return toast('Ese archivo no es una copia de Control Financiero', 'bad');
+    if (!confirm(`¿Recuperar esta copia? Tus datos actuales (${S.movements.length} movimientos) se sustituirán por los de la copia (${d.movements.length} movimientos).`)) return;
+    S = Object.assign(defaultState(), d);
+    save(); tick(); render();
+    toast('Copia recuperada', 'ok');
+  };
+  r.readAsText(file);
 }
 
 function openBalanceFix() {
