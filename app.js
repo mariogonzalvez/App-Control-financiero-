@@ -5,7 +5,7 @@
    ========================================================= */
 
 const STORAGE_KEY = 'cf-data-v1';
-const APP_VERSION = '3';
+const APP_VERSION = '4';
 const PALETTE = ['#3987e5', '#d95926', '#199e70', '#c98500', '#d55181', '#008300', '#9085e9', '#e66767'];
 const OTHER_COLOR = '#7d8aa5';
 const FIXED_COLOR = '#5f7bb0';
@@ -837,9 +837,8 @@ function renderSettings() {
 
     <div class="section-label">Atajo de iPhone</div>
     <div class="card howto">
-      <div class="muted small" style="line-height:1.5">El atajo copia el gasto y la app lo importa al abrirla con el botón <b>Importar gasto desde el atajo</b> de Inicio. Palabras que entiende para la categoría:</div>
+      <div class="muted small" style="line-height:1.5">El atajo copia una frase como <code class="k">12,50 comida efectivo</code> y la app la importa con el botón <b>Importar gasto desde el atajo</b> de Inicio. Si no dices cuenta o efectivo, se apunta en la cuenta. Palabras que entiende para la categoría:</div>
       <div class="chips" style="margin-top:10px">${spendCats().map(c => `<code class="k">${esc(shortKey(c))}</code>`).join('')}</div>
-      <div class="muted small" style="margin-top:10px">Formato: <code class="k">CF;fechahora;importe;categoría;cuenta|efectivo</code></div>
     </div>
 
     <div class="section-label">Datos</div>
@@ -1157,6 +1156,41 @@ function parseShortcutText(text) {
   }
   return out;
 }
+/* Palabras habituales que apuntan a una categoría (por el comienzo de su nombre) */
+const CAT_ALIASES = {
+  super: 'comida', mercadona: 'comida', compra: 'comida', nevera: 'comida', lidl: 'comida', carrefour: 'comida',
+  gasolinera: 'gasolina', diesel: 'gasolina', coche: 'gasolina', transporte: 'gasolina', bus: 'gasolina', metro: 'gasolina', taxi: 'gasolina', tren: 'gasolina', parking: 'gasolina',
+  farmacia: 'salud', medico: 'salud', peluqueria: 'salud', cuidado: 'salud',
+  restaurante: 'restauracion', bar: 'restauracion', cena: 'restauracion', comida_fuera: 'restauracion', cafe: 'restauracion', copas: 'restauracion', fuera: 'restauracion',
+  colonia: 'ropa', colonias: 'ropa', zapatillas: 'ropa', perfume: 'ropa',
+  cine: 'ocio', concierto: 'ocio', viaje: 'ocio',
+};
+function parseFreeText(text) {
+  const out = [];
+  for (const raw of String(text || '').split(/[\r\n]+/)) {
+    const line = raw.trim();
+    const m = line.match(/\d+(?:[.,]\d+)*/);
+    if (!m) continue;
+    const amount = parseAmount(m[0]);
+    if (!(amount > 0)) continue;
+    const words = (line.slice(0, m.index) + ' ' + line.slice(m.index + m[0].length))
+      .replace(/€|\beuros?\b|\bcon\b|\ben\b|\bde\b/gi, ' ').split(/\s+/).filter(Boolean);
+    let account = 'cuenta', categoryId = null;
+    const noteWords = [];
+    for (const w of words) {
+      const n = norm(w);
+      if (n.startsWith('efect') || n === 'cash' || n === 'metalico') { account = 'efectivo'; continue; }
+      if (['cuenta', 'tarjeta', 'banco', 'bizum'].includes(n)) { account = 'cuenta'; continue; }
+      if (!categoryId && n.length >= 3) {
+        const id = matchCategory(CAT_ALIASES[n] || n);
+        if (id) { categoryId = id; continue; }
+      }
+      noteWords.push(w);
+    }
+    out.push({ id: `T:${todayISO()}:${norm(line)}`, amount, date: todayISO(), categoryId, catText: words.join(' '), account, note: noteWords.join(' '), free: true });
+  }
+  return out;
+}
 function matchCategory(s) {
   const q = norm(s);
   if (!q) return null;
@@ -1173,28 +1207,34 @@ async function importFromClipboard() {
   handleImportText(text, true);
 }
 function handleImportText(text, fromClipboard) {
-  const items = parseShortcutText(text);
-  const fresh = items.filter(i => !S.imported.includes(i.id) && !S.movements.some(m => m.importId === i.id));
+  let items = parseShortcutText(text);
+  if (!items.length) items = parseFreeText(text);
   if (!items.length) {
-    if (fromClipboard) return openPasteSheet('No he encontrado ningún gasto del atajo en el portapapeles. Ejecuta el atajo y vuelve a intentarlo, o pega el texto aquí:');
-    return toast('Ese texto no tiene el formato del atajo', 'warn');
+    if (fromClipboard) return openPasteSheet('No he encontrado ningún gasto en el portapapeles. Usa el atajo y vuelve a intentarlo, o escribe aquí el gasto (ej. <b>12,50 comida efectivo</b>):');
+    return toast('No encuentro ningún importe en ese texto', 'warn');
   }
-  if (!fresh.length) return toast('Ese gasto ya estaba importado', 'warn');
-  openImportReview(fresh);
+  const done = i => S.imported.includes(i.id) || S.movements.some(m => m.importId === i.id);
+  const fresh = items.filter(i => !done(i));
+  if (fresh.length) return openImportReview(fresh);
+  // Frase libre ya importada hoy: puede ser un gasto repetido de verdad, se deja importar avisando
+  if (items.every(i => i.free)) return openImportReview(items, true);
+  toast('Ese gasto ya estaba importado', 'warn');
 }
 function openPasteSheet(msg) {
   openSheet('Importar del atajo', `
     <div class="infobox" style="margin-top:0">${msg || 'Mantén pulsado el recuadro y elige <b>Pegar</b>.'}</div>
-    <div class="field"><textarea id="f-paste" class="input" placeholder="CF;20261023143005;12,50;comida;efectivo"></textarea></div>
+    <div class="field"><textarea id="f-paste" class="input" placeholder="12,50 comida efectivo"></textarea></div>
     <div class="sheet-actions"><button class="btn btn-primary" id="f-go">Importar</button></div>`, sh => {
     $('#f-go', sh).addEventListener('click', () => handleImportText($('#f-paste', sh).value, false));
   });
 }
-function openImportReview(items) {
+function openImportReview(items, repeated = false) {
   const cats = spendCats();
   openSheet(items.length === 1 ? 'Gasto del atajo' : `${items.length} gastos del atajo`, `
+    ${repeated ? '<div class="warnbox" style="margin:0 0 12px">Hoy ya importaste un gasto igual. Impórtalo solo si es otro gasto distinto.</div>' : ''}
     ${items.map((it, i) => `<div class="card" style="margin-top:${i ? 10 : 0}px">
       <div class="cat-head"><span class="cat-rest num" style="font-size:24px">${fmt(it.amount)}</span><span class="muted small">${esc(fmtDay(it.date))} · ${it.account === 'efectivo' ? 'Efectivo' : 'Cuenta'}</span></div>
+      ${it.note ? `<div class="small dim" style="margin-top:4px">Nota: ${esc(it.note)}</div>` : ''}
       ${it.categoryId ? '' : `<div class="small" style="color:var(--warn);margin-top:6px">No reconozco la categoría “${esc(it.catText)}”. Elige una:</div>`}
       <div class="chips" style="margin-top:10px" data-imp="${i}">${cats.map(c => `<button class="chip ${c.id === it.categoryId ? 'on' : ''}" data-c="${c.id}"><span class="dot" style="background:${c.color}"></span>${esc(c.name)}</button>`).join('')}</div>
     </div>`).join('')}
@@ -1208,7 +1248,7 @@ function openImportReview(items) {
       const befores = items.map(it => spentInCat(it.categoryId, ymOf(it.date)));
       for (const it of items) {
         S.movements.push({ id: uid(), type: 'gasto', amount: it.amount, date: it.date, account: it.account, categoryId: it.categoryId, note: it.note, importId: it.id, createdAt: Date.now() });
-        S.imported.push(it.id);
+        if (!S.imported.includes(it.id)) S.imported.push(it.id);
       }
       S.imported = S.imported.slice(-500);
       save(); closeSheet(); render();
