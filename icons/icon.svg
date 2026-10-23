@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+  <defs>
+    <radialGradient id="bg" cx="0.5" cy="0.38" r="0.75">
+      <stop offset="0" stop-color="#14254F"/>
+      <stop offset="0.6" stop-color="#0A1430"/>
+      <stop offset="1" stop-color="#050B1C"/>
+    </radialGradient>
+    <linearGradient id="g" gradientUnits="userSpaceOnUse" x1="15" y1="10" x2="80" y2="90">
+      <stop offset="0" stop-color="#A8ECFF"/>
+      <stop offset="0.5" stop-color="#2E8BFF"/>
+      <stop offset="1" stop-color="#2448F5"/>
+    </linearGradient>
+    <filter id="glow" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="3.2"/>
+    </filter>
+    <g id="m" fill="none" stroke-linecap="round">
+      <path d="M45.5 23.4 A27 27 0 0 0 45.5 76.6"/><path d="M13 43 H37 M13 55 H37"/>
+      <path d="M50 10 V90"/>
+      <path d="M54.5 23 C63 23 70 26.5 73 32"/><path d="M54.5 50 C67 50 76 54 76 63.5 C76 73 67 77 54.5 77"/>
+    </g>
+  </defs>
+  <rect width="100" height="100" fill="url(#bg)"/>
+  <g transform="translate(50 50) scale(0.66) translate(-45 -50)">
+    <use href="#m" stroke="#2E7BFF" stroke-width="8" opacity="0.7" filter="url(#glow)"/>
+    <use href="#m" stroke="url(#g)" stroke-width="7"/>
+  </g>
+</svg>
