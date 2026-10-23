@@ -330,3 +330,8 @@ code.k { font-family: ui-monospace, Menlo, monospace; font-size: 13px; backgroun
 #toast.bad { border-color: rgba(255, 77, 94, .6); background: #2C1520; color: #FF9AA4; }
 #toast.ok { border-color: rgba(61, 220, 151, .45); }
 .mini .n span:last-child { overflow: hidden; text-overflow: ellipsis; }
+.search { display: flex; align-items: center; gap: 10px; height: 46px; padding: 0 14px; border-radius: 14px; background: rgba(5, 11, 28, .55); border: 1px solid var(--line-2); }
+.search:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(46, 139, 255, .2); }
+.search svg { width: 18px; height: 18px; flex: none; fill: none; stroke: var(--muted); stroke-width: 2.2; stroke-linecap: round; }
+.search input { flex: 1; min-width: 0; height: 100%; background: none; border: 0; outline: none; color: var(--text); font: 16px var(--font); -webkit-appearance: none; appearance: none; }
+.search input::-webkit-search-cancel-button { -webkit-appearance: none; }
