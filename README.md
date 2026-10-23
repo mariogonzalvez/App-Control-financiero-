@@ -20,7 +20,7 @@ App web (PWA) para controlar gastos personales desde el iPhone. Funciona sin con
 5. En **Build and deployment → Source**, elige **Deploy from a branch**.
 6. En **Branch**, elige **main** y la carpeta **/ (root)**. Pulsa **Save**.
 7. Espera 1–2 minutos y recarga la página. Arriba saldrá: *"Your site is live at …"*.
-   La dirección será: **https://mariogonzalvez.github.io/app-control-financiero-/**
+   La dirección será: **https://mariogonzalvez.github.io/App-Control-financiero-/**
 
 > El repositorio debe ser **público** para usar GitHub Pages gratis (Settings → General → abajo del todo, *Danger Zone → Change visibility*). Tus datos **no** se suben: solo se publica el código de la app.
 
