@@ -335,3 +335,15 @@ code.k { font-family: ui-monospace, Menlo, monospace; font-size: 13px; backgroun
 .search svg { width: 18px; height: 18px; flex: none; fill: none; stroke: var(--muted); stroke-width: 2.2; stroke-linecap: round; }
 .search input { flex: 1; min-width: 0; height: 100%; background: none; border: 0; outline: none; color: var(--text); font: 16px var(--font); -webkit-appearance: none; appearance: none; }
 .search input::-webkit-search-cancel-button { -webkit-appearance: none; }
+.chip-import { display: flex; align-items: center; gap: 12px; width: 100%; margin-top: 14px; padding: 14px; border-radius: 16px; border: 1px dashed var(--line-2); color: var(--text); font-size: 15px; font-weight: 650; text-align: left; }
+.chip-import small { display: block; font-size: 12.5px; font-weight: 500; color: var(--dim); margin-top: 2px; }
+.chip-import svg { width: 22px; height: 22px; flex: none; stroke: var(--accent-2); fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.imp-row { padding: 10px 0; border-bottom: 1px solid var(--line); }
+.imp-row.todo { margin: 0 -8px; padding: 10px 8px; border-radius: 12px; background: rgba(255, 159, 46, .1); border-bottom-color: transparent; margin-bottom: 4px; }
+.imp-top, .imp-bottom { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.imp-bottom { margin-top: 6px; }
+.imp-desc { font-weight: 650; font-size: 14.5px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.imp-amt { font-weight: 700; white-space: nowrap; }
+.imp-amt.pos { color: var(--good); }
+.imp-sel { max-width: 58%; height: 36px; padding: 0 28px 0 10px; border-radius: 10px; background: rgba(5, 11, 28, .7) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2393A4CB' stroke-width='2.4'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E") no-repeat right 8px center / 14px; border: 1px solid var(--line-2); color: var(--text); font: 600 14px var(--font); -webkit-appearance: none; appearance: none; }
+.imp-row.todo .imp-sel { border-color: var(--warn); color: #FFC07A; }

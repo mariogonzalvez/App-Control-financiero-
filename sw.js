@@ -1,8 +1,8 @@
 /* Service worker: la app funciona sin conexión.
    Cambia VERSION al publicar cambios para que el iPhone descargue la nueva versión. */
-const VERSION = 'cf-v6';
+const VERSION = 'cf-v7';
 const ASSETS = [
-  './', 'index.html', 'styles.css', 'app.js', 'manifest.webmanifest',
+  './', 'index.html', 'styles.css', 'app.js', 'bank.js', 'manifest.webmanifest',
   'icons/logo.svg', 'icons/icon-32.png', 'icons/icon-120.png', 'icons/icon-152.png',
   'icons/icon-167.png', 'icons/icon-180.png', 'icons/icon-192.png', 'icons/icon-512.png',
 ];

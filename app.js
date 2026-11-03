@@ -5,7 +5,7 @@
    ========================================================= */
 
 const STORAGE_KEY = 'cf-data-v1';
-const APP_VERSION = '6';
+const APP_VERSION = '7';
 const PALETTE = ['#3987e5', '#d95926', '#199e70', '#c98500', '#d55181', '#008300', '#9085e9', '#e66767'];
 const OTHER_COLOR = '#7d8aa5';
 const FIXED_COLOR = '#5f7bb0';
@@ -130,6 +130,8 @@ function defaultState() {
     lastYM: null,
     pendingClose: null,
     lastCat: null,
+    bankRules: {},
+    bankSeen: [],
   };
 }
 
@@ -312,6 +314,7 @@ const ICON = {
   left: '<svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg>',
   right: '<svg viewBox="0 0 24 24"><path d="M9 5l7 7-7 7"/></svg>',
   chev: '<svg class="chev" viewBox="0 0 24 24"><path d="M9 5l7 7-7 7"/></svg>',
+  bank: '<svg viewBox="0 0 24 24"><path d="M3 10l9-6 9 6M5 10v8M9.5 10v8M14.5 10v8M19 10v8M3 20h18"/></svg>',
   search: '<svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>',
   swap: '<svg viewBox="0 0 24 24"><path d="M7 4L3 8l4 4M3 8h14M17 20l4-4-4-4M21 16H7"/></svg>',
   plus: '<svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>',
@@ -325,7 +328,7 @@ function mvInfo(m) {
   switch (m.type) {
     case 'gasto': {
       const c = catById(m.categoryId);
-      return { title: c ? c.name : 'Otros', sub: [m.note, accName(m.account)], color: c ? c.color : OTHER_COLOR, ico: esc((c ? c.name : 'O').charAt(0)) };
+      return { title: c ? c.name : 'Otros', sub: [m.amount < 0 ? 'Devolución' : '', m.note, accName(m.account)], color: c ? c.color : OTHER_COLOR, ico: esc((c ? c.name : 'O').charAt(0)) };
     }
     case 'ingreso':
       return { title: m.note || 'Ingreso', sub: ['Ingreso', accName(m.account)], color: '#3DDC97', ico: ICON.plus };
@@ -481,6 +484,8 @@ function renderHome() {
       ${accMv.length > UI.listLimit ? '<button class="btn btn-ghost btn-block btn-small" id="more" style="margin-top:10px">Ver más</button>' : ''}
     </div>
 
+    <button class="chip-import" id="bank-imp">${ICON.bank}<span>Importar extracto del banco${S.lastBankImport ? `<small>Última vez: ${esc(fmtDay(isoOf(new Date(S.lastBankImport))).toLowerCase())}</small>` : ''}</span></button>
+
 
     ${backupDue() ? `<button class="card warnbox" id="bk-remind" style="display:block;width:100%;text-align:left">💾 ${S.lastBackup ? 'Hace más de un mes que no haces' : 'Aún no has hecho'} una copia de seguridad. Toca aquí para hacerla.</button>` : ''}
     <div class="card">
@@ -511,6 +516,7 @@ function renderHome() {
   $('#more')?.addEventListener('click', () => { UI.listLimit += 50; renderHome(); animateBars(view); });
   $('#to-month').addEventListener('click', () => { UI.viewYM = curYM(); go('mes'); });
   $('#bk-remind')?.addEventListener('click', exportBackup);
+  $('#bank-imp').addEventListener('click', openBankImport);
   $$('[data-cat]', view).forEach(el => el.addEventListener('click', () => {
     openMovementForm('gasto', null, { categoryId: el.dataset.cat });
   }));
@@ -859,6 +865,12 @@ function renderSettings() {
       <div class="small dim" style="margin-top:10px">Toca el nombre de una categoría para renombrarla o eliminarla.</div>
     </div>
 
+    <div class="section-label">Banco</div>
+    <div class="card">
+      <button class="list-row" id="s-bank"><span class="t">Importar extracto de Trade Republic<small>${S.lastBankImport ? 'Última importación: ' + new Date(S.lastBankImport).toLocaleDateString('es-ES', { day: 'numeric', month: 'long' }) : 'Trae tus movimientos del banco desde el PDF'}</small></span>${ICON.chev}</button>
+      ${Object.keys(S.bankRules || {}).length ? `<button class="list-row" id="s-bankrules"><span class="t">Olvidar clasificaciones aprendidas<small>${Object.keys(S.bankRules).length} comercios recordados</small></span>${ICON.chev}</button>` : ''}
+    </div>
+
     <div class="section-label">Copia de seguridad</div>
     <div class="card">
       <button class="list-row" id="s-backup"><span class="t">Hacer copia de seguridad<small>${S.lastBackup ? 'Última: ' + new Date(S.lastBackup).toLocaleDateString('es-ES', { day: 'numeric', month: 'long', year: 'numeric' }) : 'Nunca has hecho una copia'}</small></span>${ICON.chev}</button>
@@ -899,6 +911,11 @@ function renderSettings() {
   $('#s-addrec').addEventListener('click', () => openRecurringForm(null));
   $('#s-bal').addEventListener('click', openBalanceFix);
   $('#s-backup').addEventListener('click', exportBackup);
+  $('#s-bank').addEventListener('click', openBankImport);
+  $('#s-bankrules')?.addEventListener('click', () => {
+    if (!confirm('¿Olvidar cómo has clasificado cada comercio? La próxima importación volverá a adivinar las categorías.')) return;
+    S.bankRules = {}; save(); render();
+  });
   $('#s-restore').addEventListener('click', () => $('#s-file').click());
   $('#s-file').addEventListener('change', e => { const f = e.target.files[0]; e.target.value = ''; if (f) importBackup(f); });
   $('#s-reset').addEventListener('click', () => {
@@ -1162,7 +1179,8 @@ function openMovementForm(type, m = null, preset = {}) {
 
     $('#f-save', sh).addEventListener('click', () => {
       const amount = parseAmount(amt.value);
-      if (!(amount > 0)) { amt.focus(); return toast('Escribe una cantidad', 'warn'); }
+      const refund = type === 'gasto' && editing && m.amount < 0;
+      if (!(amount > 0) && !(refund && amount < 0)) { amt.focus(); return toast('Escribe una cantidad', 'warn'); }
       const date = $('#f-date', sh).value || todayISO();
       const note = $('#f-note', sh).value.trim();
       if (type === 'gasto' && !f.categoryId) return toast('Elige una categoría', 'warn');
