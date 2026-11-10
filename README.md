@@ -25,6 +25,9 @@ App web (PWA) para controlar gastos personales desde el iPhone. Funciona sin con
 
 ## 2. Instalarla en el iPhone
 
+Vídeo de cómo configurarla: **https://mariogonzalvez.github.io/App-Control-financiero-/tutorial.mp4**
+
+
 1. Abre **Safari** (tiene que ser Safari) y entra en la dirección de arriba.
 2. Pulsa el botón **Compartir** (el cuadrado con la flecha hacia arriba).
 3. Baja y pulsa **Añadir a pantalla de inicio**.
