@@ -5,7 +5,7 @@
    ========================================================= */
 
 const STORAGE_KEY = 'cf-data-v1';
-const APP_VERSION = '7';
+const APP_VERSION = '8';
 const PALETTE = ['#3987e5', '#d95926', '#199e70', '#c98500', '#d55181', '#008300', '#9085e9', '#e66767'];
 const OTHER_COLOR = '#7d8aa5';
 const FIXED_COLOR = '#5f7bb0';
@@ -99,21 +99,15 @@ function fmtDay(iso) {
 function defaultCategories() {
   const c = (name, pct, kind, color) => ({ id: uid(), name, pct, kind, color });
   return [
-    c('Comida (nevera)', 25, 'normal', PALETTE[0]),
-    c('Gasolina / transporte', 8, 'normal', PALETTE[1]),
-    c('Salud y cuidado personal', 5, 'normal', PALETTE[2]),
-    c('Restauración / comidas fuera', 8, 'normal', PALETTE[3]),
-    c('Ropa y colonias', 7, 'normal', PALETTE[4]),
-    c('Ocio', 5, 'normal', PALETTE[5]),
-    c('Ahorro', 20, 'ahorro', PALETTE[6]),
-    c('Inversión', 22, 'inversion', PALETTE[7]),
+    c('Comida (nevera)', 0, 'normal', PALETTE[0]),
+    c('Gasolina / transporte', 0, 'normal', PALETTE[1]),
+    c('Salud y cuidado personal', 0, 'normal', PALETTE[2]),
+    c('Restauración / comidas fuera', 0, 'normal', PALETTE[3]),
+    c('Ropa y colonias', 0, 'normal', PALETTE[4]),
+    c('Ocio', 0, 'normal', PALETTE[5]),
+    c('Ahorro', 0, 'ahorro', PALETTE[6]),
+    c('Inversión', 0, 'inversion', PALETTE[7]),
   ];
-}
-function defaultRecurring(start) {
-  return [
-    ['Coche', 251], ['Gimnasio', 27], ['Móvil', 32], ['Preparador', 110],
-    ['iCloud', 10], ['Claude', 22], ['Harbiz', 28], ['Imprevistos', 30],
-  ].map(([name, amount]) => ({ id: uid(), name, amount, day: 1, start }));
 }
 function defaultState() {
   return {
@@ -286,7 +280,7 @@ $('#toast').addEventListener('click', () => $('#toast').classList.remove('show')
 function limitWarning(catId, ym, before) {
   const st = monthStats(ym);
   const c = st.cats.find(x => x.id === catId);
-  if (!c) return false;
+  if (!c || !(Number(c.pct) > 0)) return false;
   if (c.limit <= 0 && c.spent > 0) {
     toast(`⚠️ <b>${esc(c.name)}</b> no tiene presupuesto este mes (aún no hay ingresos registrados).`, 'warn');
     return true;
@@ -439,7 +433,7 @@ function renderWelcome() {
     <p>Para empezar, dime cuánto dinero tienes ahora mismo.</p>
     <div class="field"><label for="w-cuenta">Saldo en cuenta</label><input id="w-cuenta" class="input num" inputmode="decimal" placeholder="0,00 €" autocomplete="off"></div>
     <div class="field"><label for="w-efectivo">Efectivo</label><input id="w-efectivo" class="input num" inputmode="decimal" placeholder="0,00 €" autocomplete="off"></div>
-    <div class="infobox">Ya tienes cargados tus gastos fijos (510&nbsp;€ al mes, todos el día 1) y el reparto por categorías. Puedes cambiarlos cuando quieras en <b>Ajustes</b>.</div>
+    <div class="infobox">Empiezas con todo a cero. Después, en <b>Ajustes</b>, añade tus gastos fijos y reparte tu dinero por categorías.</div>
     <button class="btn btn-primary btn-block" id="w-go" style="margin-top:18px">Empezar</button>
   </div>`;
   $('#w-go').addEventListener('click', () => {
@@ -450,8 +444,7 @@ function renderWelcome() {
     S.setup = true;
     S.setupDate = t;
     S.initial = { cuenta: c, efectivo: e };
-    // Solo se cobran automáticamente los fijos a partir de mañana: el saldo inicial ya refleja los anteriores.
-    S.recurring = defaultRecurring(addDays(t, 1));
+    S.recurring = [];
     S.lastYM = curYM();
     save();
     if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
@@ -472,6 +465,7 @@ function renderHome() {
       <div class="hero-amount num ${b.total < 0 ? 'neg' : ''}" id="h-total">${fmt(b.total)}</div>
       <div class="hero-sub num">Cuenta ${fmt(b.cuenta)} · Efectivo ${fmt(b.efectivo)}</div>
     </section>
+    ${pctTotal(S.categories) === 0 ? `<button class="card infobox" id="setup-remind" style="display:block;width:100%;text-align:left;color:var(--text)">⚙️ <b>Configura tu app</b><br><span class="muted">1. Añade tus gastos fijos (alquiler, móvil, gimnasio…)<br>2. Reparte tu dinero por categorías en porcentajes<br>Toca aquí para ir a Ajustes.</span></button>` : ''}
 
     <div class="card">
       <div class="seg" id="acc-seg">
@@ -516,6 +510,7 @@ function renderHome() {
   $('#more')?.addEventListener('click', () => { UI.listLimit += 50; renderHome(); animateBars(view); });
   $('#to-month').addEventListener('click', () => { UI.viewYM = curYM(); go('mes'); });
   $('#bk-remind')?.addEventListener('click', exportBackup);
+  $('#setup-remind')?.addEventListener('click', () => go('ajustes'));
   $('#bank-imp').addEventListener('click', openBankImport);
   $$('[data-cat]', view).forEach(el => el.addEventListener('click', () => {
     openMovementForm('gasto', null, { categoryId: el.dataset.cat });
